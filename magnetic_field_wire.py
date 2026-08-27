@@ -2,15 +2,11 @@
 Magnetostatic B-field of a straight current-carrying wire (Ansys Maxwell 3D).
 PyAEDT 1.4.x API (ansys.aedt.core namespace), Ansys Electronics Desktop Student 2025 R2.
 """
-
 import os
-
 import ansys.aedt.core.desktop as _desktop
 from ansys.aedt.core import Maxwell3d
 from ansys.aedt.core.generic.constants import Axis
 from ansys.aedt.core.generic.general_methods import active_sessions
-
-
 # ----------------------------------------------------------------------
 # 0. Workaround for PyAEDT 1.4.0 + Student version.
 #    is_grpc_session_active() calls active_sessions() without
@@ -22,9 +18,7 @@ from ansys.aedt.core.generic.general_methods import active_sessions
 def _is_grpc_session_active(port, machine=None):
     return port in active_sessions(student_version=True).values()
 
-
 _desktop.is_grpc_session_active = _is_grpc_session_active
-
 
 # ----------------------------------------------------------------------
 # 1. Launch Maxwell 3D
@@ -98,7 +92,6 @@ m3d.assign_current(
     swap_direction=True,
     name="I_out",
 )
-
 # ----------------------------------------------------------------------
 # 5. Solve
 # ----------------------------------------------------------------------
@@ -134,11 +127,9 @@ plot = m3d.post.create_report(
     context="Extraction_Line",
     report_category="Fields",
 )
-
 # export_to_csv() is gone in 1.x. export_table_to_file() only dumps marker/
 # legend tables, so pull the trace data itself instead.
 csv_path = os.path.join(m3d.working_directory, "B_Field_Data.csv")
 plot.get_solution_data().export_data_to_csv(csv_path)
 print(f"Simulation complete. B-field data exported to: {csv_path}")
-
 # m3d.release_desktop(close_projects=True, close_desktop=True)
