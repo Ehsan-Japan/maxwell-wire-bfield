@@ -31,7 +31,7 @@ midplane, from r = 3 mm out to r = 20 mm.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/geometry-dark.png">
-  <img src="docs/images/geometry.png" alt="XZ cross-section of the model: copper wire, vacuum region, the two current terminals on the region boundary, and the extraction line">
+  <img src="docs/images/geometry.png" alt="Left: XZ side view of the model to scale, with the wire, vacuum region, the two current terminals on the region boundary and the extraction line. Right: XY view down the wire, showing circular B field lines around the current and the extraction line crossing them at 90 degrees.">
 </picture>
 
 | | |
@@ -43,6 +43,11 @@ midplane, from r = 3 mm out to r = 20 mm.
 | Excitation | `I_in` 5 A on the +Z end face; `I_out` 5 A on the −Z end face, `swap_direction=True` |
 | Setup | `Setup1`, `MaximumPasses = 5` |
 | Extraction | polyline (3, 0, 0) → (20, 0, 0) mm |
+
+The right-hand view is the one to keep in your head: **B is azimuthal**. It
+circles the current, it has no radial or axial component here, and the
+extraction line is radial — so it cuts those circles at 90° and every sample is
+pure B_φ. That is why a single scalar |B| versus r is the whole answer.
 
 Two things in there are worth understanding rather than copying:
 
