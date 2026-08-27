@@ -1,89 +1,233 @@
-# Magnetostatic B-field of a current-carrying wire — Ansys Maxwell 3D via PyAEDT
+# Magnetostatics from scratch — a current-carrying wire in Ansys Maxwell 3D
 
-A minimal, **working** PyAEDT 1.4 example that drives Ansys Electronics Desktop
-**Student** 2025 R2 from Python: it builds a copper wire, excites it with 5 A,
-solves a magnetostatic setup, and exports |B| along a radial line to CSV.
+One conductor, one current, one field. This repo takes the simplest problem in
+magnetostatics all the way through a real finite-element solver, driven from
+Python with PyAEDT, and then asks the two questions every FEA result has to
+survive:
 
-The script is short. Getting it to run on the *Student* edition was not — this
-repo documents every failure and its fix, because most of them produce error
-messages that point nowhere near the actual cause.
+- does it match the theory?
+- and how much of what I'm seeing is *the physics* versus *my discretisation
+  and my boundary*?
 
-> **If you landed here from a search for**
-> `Failed to start new AEDT gRPC session on port ...` **with the Student
-> version — go straight to [The gRPC bug](#the-grpc-bug-the-one-that-actually-blocks-you).**
+Each of those gets its own script, its own data, and its own figure.
+
+| | |
+|---|---|
+| [1. The model](#1-the-model) | what gets built, and why the region is shaped that way |
+| [2. The theory](#2-the-theory) | Ampère's law inside and outside the conductor |
+| [3. The simulation](#3-the-simulation) | what the solver returns |
+| [4. Theory vs simulation](#4-theory-vs-simulation) | the validation, with a residual |
+| [5. Effect of mesh refinement](#5-effect-of-mesh-refinement) | numerical error you can shrink |
+| [6. Effect of the region padding](#6-effect-of-the-region-padding) | boundary error you can shrink |
+| [Running it](#running-it) | setup, commands, files |
 
 ---
 
-## What it computes
+## 1. The model
 
-A copper cylinder (r = 2 mm, L = 50 mm) along Z, carrying 5 A, inside a vacuum
-region. |B| is sampled along a line from r = 3 mm to r = 20 mm in the wire's
-midplane.
+A copper cylinder, r = 2 mm, L = 50 mm, along **Z**, carrying **5 A**, sitting
+in a vacuum region. |B| is sampled along a straight line in the wire's
+midplane, from r = 3 mm out to r = 20 mm.
 
-| r | Solver | Analytic (finite segment) | Infinite-wire formula |
-|---|--------|---------------------------|-----------------------|
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/geometry-dark.png">
+  <img src="docs/images/geometry.png" alt="XZ cross-section of the model: copper wire, vacuum region, the two current terminals on the region boundary, and the extraction line">
+</picture>
+
+| | |
+|---|---|
+| Solution type | Magnetostatic |
+| Conductor | cylinder along Z, r = 2 mm, L = 50 mm, centered at the origin |
+| Material | copper |
+| Region | vacuum, `pad_value = [500, 500, 500, 500, 0, 0]` %, `pad_type = "Percentage Offset"` |
+| Excitation | `I_in` 5 A on the +Z end face; `I_out` 5 A on the −Z end face, `swap_direction=True` |
+| Setup | `Setup1`, `MaximumPasses = 5` |
+| Extraction | polyline (3, 0, 0) → (20, 0, 0) mm |
+
+Two things in there are worth understanding rather than copying:
+
+**The ±Z padding is 0.** A magnetostatic current excitation is an *external
+terminal* — the face it sits on has to be on the outer boundary of the problem,
+because that is where the current is understood to come from and go to. Pad the
+region in Z and the wire floats inside it; both terminals are then illegal and
+the solve stops.
+
+**There are two current terminals, not one.** Current has to enter somewhere and
+leave somewhere. A conduction path with a single terminal has nowhere to send
+the 5 A, and the solver refuses it. `I_out` is the same 5 A with
+`swap_direction=True`.
+
+Both of those are modelling facts about magnetostatics, not quirks of the API.
+
+---
+
+## 2. The theory
+
+Before looking at any solver output, know what the answer should be. Everything
+on this figure comes from Ampère's law and Biot–Savart — no simulation:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/theory-dark.png">
+  <img src="docs/images/theory.png" alt="Left: |B| rising linearly inside the conductor and falling as 1/r outside. Right: the ratio of finite-segment to infinite-wire field versus radius">
+</picture>
+
+**Inside the conductor** (r < a), a circular Ampèrian loop encloses only the
+fraction (r/a)² of the total current, so
+
+```
+B = μ₀·I·r / (2π·a²)          rising linearly from 0 on the axis
+```
+
+**Outside** (r > a) the loop encloses all of it:
+
+```
+B = μ₀·I / (2π·r)             falling as 1/r
+```
+
+so |B| peaks exactly at the conductor surface — 500 µT here — and there is no
+field maximum anywhere else to look for.
+
+**But the wire is only 50 mm long.** The 1/r law is the infinite-wire limit. For
+a straight segment of length L, on its midplane, Biot–Savart gives
+
+```
+B = μ₀·I·L / (2π·r·√(L² + 4r²))
+```
+
+which is the infinite result multiplied by `L / √(L² + 4r²)` — the right-hand
+panel above. At r = 3 mm that factor is 99 %, so the textbook formula is fine.
+At r = 20 mm it is 78 %: the infinite formula over-predicts by 28 %. **That gap
+is physics, not solver error.** Comparing a finite model against the infinite
+formula and "fixing" the model to close the gap is the classic first mistake.
+
+---
+
+## 3. The simulation
+
+What Maxwell 3D actually returns along the extraction line:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/simulation-dark.png">
+  <img src="docs/images/simulation.png" alt="Left: solver |B| versus radius. Right: the same data log-log against a 1/r guide line">
+</picture>
+
+327 µT at r = 3 mm down to 36 µT at r = 20 mm. The log–log panel is the useful
+one: a pure 1/r field is a straight line of slope −1 there, and the solver curve
+starts at about −1.1 and steepens to −1.5. It is decaying **faster** than 1/r,
+which is exactly what section 2 predicts for a finite wire.
+
+Raw data: [`results/B_Field_Data.csv`](results/B_Field_Data.csv), 1001 points,
+semicolon-separated.
+
+---
+
+## 4. Theory vs simulation
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/theory_vs_simulation-dark.png">
+  <img src="docs/images/theory_vs_simulation.png" alt="Solver, finite-segment theory and infinite-wire theory versus radius, with the solver-minus-theory residual below">
+</picture>
+
+| r | Solver | Theory (finite segment) | Infinite-wire formula |
+|---|--------|-------------------------|-----------------------|
 | 3 mm | 327 µT | 332 µT | 333 µT |
 | 20 mm | 36 µT | 39 µT | 50 µT ❌ |
 
-The analytic check must use the **finite** segment form on the midplane:
+Always plot the residual, not just the overlay — two curves on a log axis look
+like they agree long after they stop agreeing. Here the solver sits within a few
+percent of the finite-segment theory across the sweep and drifts to about −7 %
+at the far end.
 
-```
-B = μ₀·I·L / (2·π·r·√(L² + 4r²))
-```
-
-The familiar `B = μ₀I / (2πr)` only holds while `r ≪ L`. With a 50 mm wire it
-already over-predicts by ~28 % at r = 20 mm. That is physics, not a solver
-error — do not "fix" the model to chase it.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/b_field_vs_radius-dark.png">
-  <img src="docs/images/b_field_vs_radius.png" alt="Solver, finite-segment analytic and infinite-wire |B| versus radius, with the solver-minus-analytic residual below">
-</picture>
-
-The solver tracks the finite-segment analytic curve to within a few percent
-across the whole sweep, drifting to about -7 % at r = 20 mm where the mesh is
-coarsest. The infinite-wire curve peels away from both.
-
-Sample output is committed at [`results/B_Field_Data.csv`](results/B_Field_Data.csv)
-(1001 points, semicolon-separated). Regenerate the figures from it with:
-
-```powershell
-python -m pip install -r requirements-plot.txt
-python tools/plot_results.py
-```
+That drift is the interesting part, and it is *not* physics. Sections 5 and 6
+separate the two numerical causes.
 
 ---
 
-## Requirements
+## 5. Effect of mesh refinement
+
+> Run [`studies/study_mesh.py`](studies/study_mesh.py) in AEDT to produce this
+> figure — it needs the solver, so it is not committed.
+
+FEA solves the field on a mesh of tetrahedra. Where the mesh is coarse relative
+to how fast the field is changing, the answer is wrong — and at large r the
+elements are big and |B| is small, which is why the residual in section 4 grows
+outward.
+
+The study solves the identical geometry and excitation with 1, 2, 3, 5 and 8
+adaptive passes. Nothing physical changes between the cases; only the
+discretisation does. So any movement in the answer is numerical error, and when
+the answer *stops* moving you are mesh-converged.
+
+```powershell
+python studies/study_mesh.py        # ~5 solves, one design each
+python tools/plot_mesh_study.py     # -> docs/images/mesh_study.png
+```
+
+<!-- figure appears here once the study has been run:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/mesh_study-dark.png">
+  <img src="docs/images/mesh_study.png" alt="|B| curves at increasing adaptive-pass counts, and the error at r = 20 mm flattening as the mesh refines">
+</picture>
+-->
+
+Note that adaptive refinement is driven by the solver's own error estimate, so
+`MaximumPasses` alone doesn't guarantee a finer mesh — AEDT stops early once it
+thinks it has converged. The study pins `MinimumPasses` and tightens
+`PercentError` so each case really does get the mesh its pass count implies.
+
+---
+
+## 6. Effect of the region padding
+
+> Run [`studies/study_padding.py`](studies/study_padding.py) in AEDT to produce
+> this figure.
+
+You cannot mesh infinity. The region is where free space gets truncated, and its
+outer face carries a boundary condition. Put that face close and you are no
+longer solving "a wire in free space" — you are solving "a wire in a box", and
+the field nearest the wall is the most wrong.
+
+The study sweeps the ±X/±Y padding over 500, 750, 1000, 2000 and 4000 %, putting
+the wall at 22, 32, 42, 82 and 162 mm from the axis, with the mesh settings held
+fixed. When the answer stops depending on where the wall is, the region is big
+enough.
+
+```powershell
+python studies/study_padding.py        # ~5 solves, one design each
+python tools/plot_padding_study.py     # -> docs/images/padding_study.png
+```
+
+<!-- figure appears here once the study has been run:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/padding_study-dark.png">
+  <img src="docs/images/padding_study.png" alt="|B| curves at increasing region sizes, and the error at r = 20 mm flattening as the boundary moves away">
+</picture>
+-->
+
+Nothing below 500 % is usable here, and that is its own lesson: the region wall
+would land at 18 mm while the extraction line runs out to 20 mm. Sampling a
+field outside the solution domain doesn't give you a bad answer, it gives you a
+meaningless one. **Size the region around what you intend to measure, not just
+around the geometry.**
+
+The ±Z padding stays 0 in every case — see section 1.
+
+---
+
+## Running it
 
 | | |
 |---|---|
 | Ansys Electronics Desktop | **Student** 2025 R2 (build 2025.2.4) |
-| Install path (this machine) | `G:\Program Files\ANSYS Inc\ANSYS Student\v252\AnsysEM` |
 | Python | 3.12 (3.12.10 tested) |
 | PyAEDT | 1.4.0 |
-
-PyAEDT locates the install through the `ANSYSEMSV_ROOT252` environment variable,
-which the Student installer sets for you. Verify it before debugging anything
-else:
-
-```powershell
-$env:ANSYSEMSV_ROOT252
-# G:\Program Files\ANSYS Inc\ANSYS Student\v252\AnsysEM
-```
-
-## Setup
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-```
 
-## Run
-
-```powershell
-python magnetic_field_wire.py
+python magnetic_field_wire.py          # the main solve, exports the CSV
 ```
 
 Expected tail:
@@ -93,161 +237,40 @@ PyAEDT INFO: Design setup Setup1 solved correctly in 0.0h 0.0m 10.0s
 Simulation complete. B-field data exported to: ...\B_Field_Data.csv
 ```
 
-AEDT launches in graphical mode (`non_graphical=False`). The Student edition is
-single-instance: if a session is already open, PyAEDT attaches to it rather than
-starting a second one.
-
-The script is **idempotent** — it deletes and recreates the wire and region and
-reuses an existing `Setup1`, so you can re-run it against the same project
-without tripping over stale objects.
-
----
-
-## The gRPC bug (the one that actually blocks you)
-
-### Symptom
-
-```
-PyAEDT INFO: New AEDT session is starting on gRPC port 58101.
-PyAEDT ERROR: Failed to start on gRPC port: 58101.
-PyAEDT INFO: New AEDT session is starting on gRPC port 58541.
-Exception: Failed to start new AEDT gRPC session on port 58541 on machine 127.0.0.1.
-```
-
-Meanwhile AEDT windows keep piling up on screen, and `batch.log` cheerfully
-reports the server *did* start.
-
-### Diagnosis
-
-AEDT is fine. It launched, and it is listening:
-
-```
-> Get-CimInstance Win32_Process -Filter "Name='ansysedtsv.exe'" | Select CommandLine
-"G:\...\ansysedtsv.exe" -grpcsrv 58101
-
-> netstat -ano | findstr 58101
-TCP    127.0.0.1:58101    0.0.0.0:0    LISTENING    48372
-```
-
-PyAEDT simply cannot see it. In
-`ansys/aedt/core/generic/general_methods.py:1341`:
-
-```python
-def is_grpc_session_active(port, machine=None):
-    ...
-    return True if port in active_sessions().values() else False
-```
-
-`active_sessions()` is called **without `student_version=True`**, so it scans
-only for `ansysedt.exe` and never for `ansysedtsv.exe`. On this machine:
-
-```python
->>> active_sessions()
-{}                                    # what PyAEDT looks at
->>> active_sessions(student_version=True)
-{48372: 58101, 18936: -1, 3716: -1}   # reality
-```
-
-So `launch_aedt()`'s readiness loop never breaks, burns the full
-`settings.desktop_launch_timeout`, and reports failure. PyAEDT then retries on a
-*new* port — but AEDT is single-instance, so the retry just attaches to the
-already-running app and never opens that port. Hence the second failure, and the
-orphaned AEDT windows.
-
-### Fix
-
-Three lines at the top of the script, before constructing `Maxwell3d`:
-
-```python
-import ansys.aedt.core.desktop as _desktop
-from ansys.aedt.core.generic.general_methods import active_sessions
-
-def _is_grpc_session_active(port, machine=None):
-    return port in active_sessions(student_version=True).values()
-
-_desktop.is_grpc_session_active = _is_grpc_session_active
-```
-
-`desktop.py` imports the symbol at module level, so patching it on the module
-covers both `launch_aedt()` and `Desktop._validate_port()`.
-
-### What does *not* fix it
-
-A widely-copied "solution" is to force the insecure transport:
-
-```python
-os.environ["PYAEDT_USE_PRE_GRPC_ARGS"] = "True"
-settings.grpc_secure_mode = False
-settings.grpc_local = False
-```
-
-This is unrelated to the failure and makes things worse — it abandons the
-Windows-native WNUA transport that is the default on Windows. Verified on this
-machine: the launch fails identically with and without those lines. Delete them.
-
----
-
-## Every other thing that breaks
-
-Full evidence and reproduction for each is in
-[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
-
-| # | Error | Cause | Fix |
-|---|-------|-------|-----|
-| 1 | `Failed to start new AEDT gRPC session` | PyAEDT 1.4.0 ignores `ansysedtsv.exe` | monkeypatch above |
-| 2 | `'Maxwell3d' object has no attribute 'AXIS'` | `app.AXIS` removed in 1.x | `from ansys.aedt.core.generic.constants import Axis` → `Axis.Z` |
-| 3 | `create_region()` ignores padding | `pad_percent` renamed | `pad_value=[...]`, `pad_type="Percentage Offset"` |
-| 4 | `Illegal external terminal 'I_5A'` | wire floats inside the region | Z padding **must be 0** so the end faces sit on the boundary |
-| 5 | `Verify conduction path 'Path1'` | only one current terminal | second terminal on the opposite face, `swap_direction=True` |
-| 6 | `'Fields' object has no attribute 'export_to_csv'` | removed in 1.x | `plot.get_solution_data().export_data_to_csv(path)` |
-
-Two of these (#4, #5) are **modelling** errors, not API errors: magnetostatic
-current excitations are *external terminals*, so a conduction path needs two of
-them and both must reach the problem boundary.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/geometry-dark.png">
-  <img src="docs/images/geometry.png" alt="XZ cross-section of the model: wire, region, the two current terminals on the region boundary, and the extraction line">
-</picture>
-
-The Z padding is what makes #4 and #5 go away: with `pad_value` zero on ±Z the
-wire's end faces lie *on* the region boundary, so `I_in` and `I_out` are legal
-external terminals and the conduction path has the two it needs.
-
-### Reading the real error
-
-`analyze_setup()` returning `False` tells you nothing. The solver message is in
-AEDT's message window:
-
-```python
-for m in m3d.odesktop.GetMessages("Wire_B_Field", "Wire_B_Field", 0):
-    print(m)
-```
-
-That is how #4 and #5 were identified. Always check this before guessing.
-
----
-
-## Cleaning up orphaned sessions
-
-Failed launches leave `ansysedtsv.exe` running. They hold a license and block
-the next run:
+The figures are generated separately and need no AEDT at all — they read the
+committed CSVs:
 
 ```powershell
-Get-Process ansysedtsv -ErrorAction SilentlyContinue | Select Id, StartTime
-Stop-Process -Name ansysedtsv
+python -m pip install -r requirements-plot.txt
+python tools/plot_all.py               # every figure; skips studies with no data
 ```
 
----
-
-## Layout
+### Layout
 
 ```
-magnetic_field_wire.py     the example, documented inline
-requirements.txt           pinned, verified versions
-requirements-plot.txt      extras for the figures only (no AEDT needed)
-tools/plot_results.py      regenerates docs/images/ from the CSV
-results/B_Field_Data.csv   sample solver output
-docs/TROUBLESHOOTING.md    full diagnosis of each failure
-docs/images/               README figures, light + dark variants
+magnetic_field_wire.py            the main example, documented inline
+studies/common.py                 shared model builder for the parameter studies
+studies/study_mesh.py             sweeps adaptive passes      -> results/mesh/
+studies/study_padding.py          sweeps region padding       -> results/padding/
+tools/vizstyle.py                 shared plot style + the analytic formulas
+tools/plot_geometry.py            §1  the model
+tools/plot_theory.py              §2  analytic only
+tools/plot_simulation.py          §3  solver only
+tools/plot_theory_vs_simulation.py §4  the validation
+tools/plot_mesh_study.py          §5  mesh convergence
+tools/plot_padding_study.py       §6  boundary convergence
+tools/plot_all.py                 all of the above
+results/B_Field_Data.csv          sample solver output (committed)
+docs/images/                      figures, light + dark variants
+docs/TROUBLESHOOTING.md           every failure hit while building this, and its fix
 ```
+
+### If it won't launch
+
+The script opens with a three-line monkeypatch of `is_grpc_session_active()`.
+PyAEDT 1.4.0 scans for `ansysedt.exe` only, never `ansysedtsv.exe`, so on the
+Student build it cannot see the gRPC server it just started and fails with
+`Failed to start new AEDT gRPC session on port ...`. Keep those lines. That and
+every other failure — illegal external terminals, conduction paths, the 1.x API
+renames — is diagnosed in
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
