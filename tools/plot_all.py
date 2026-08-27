@@ -19,6 +19,7 @@ SCRIPTS = (
     "plot_theory.py",
     "plot_simulation.py",
     "plot_theory_vs_simulation.py",
+    "plot_region_sizes.py",
     "plot_mesh_study.py",
     "plot_padding_study.py",
 )

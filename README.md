@@ -202,8 +202,18 @@ the field nearest the wall is the most wrong.
 
 The study sweeps the ±X/±Y padding over 500, 750, 1000, 2000 and 4000 %, putting
 the wall at 22, 32, 42, 82 and 162 mm from the axis, with the mesh settings held
-fixed. When the answer stops depending on where the wall is, the region is big
-enough.
+fixed. Those five regions, to scale — no solver needed to draw them:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/region_sizes-dark.png">
+  <img src="docs/images/region_sizes.png" alt="Left: XY footprints of the five region sizes as nested squares around the wire and extraction line. Right: XZ profiles at the same scale, showing that only the side walls move while the top and bottom faces stay put.">
+</picture>
+
+Note what does *not* change: the ±Z faces. Only the side walls move, because the
+terminals have to stay on the top and bottom boundary. And note the price — the
+4000 % region is 54× the volume of the 500 % one, and all of it gets meshed and
+solved. When the answer stops depending on where the wall is, the region is big
+enough; anything past that is compute you spent for nothing.
 
 ```powershell
 python studies/study_padding.py        # ~5 solves, one design each
@@ -272,6 +282,7 @@ tools/plot_theory.py              §2  analytic only
 tools/plot_simulation.py          §3  solver only
 tools/plot_theory_vs_simulation.py §4  the validation
 tools/plot_mesh_study.py          §5  mesh convergence
+tools/plot_region_sizes.py        §6  the five region sizes, to scale
 tools/plot_padding_study.py       §6  boundary convergence
 tools/plot_all.py                 all of the above
 results/B_Field_Data.csv          sample solver output (committed)
