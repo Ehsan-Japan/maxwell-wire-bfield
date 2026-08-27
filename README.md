@@ -34,6 +34,19 @@ midplane, from r = 3 mm out to r = 20 mm.
   <img src="docs/images/isometric.png" alt="Isometric view of the model: copper cylinder spanning the full height of the vacuum region box, current terminals on the top and bottom boundary faces, a circular B field line around the wire, and the radial extraction line">
 </picture>
 
+That is a schematic, drawn from the same numbers the script uses. For the real
+thing — AEDT's own isometric viewport — run:
+
+```powershell
+python studies/capture_model_image.py     # needs AEDT, solves nothing
+```
+
+<!-- figure appears here once the capture has been run:
+<picture>
+  <img src="docs/images/aedt_model.png" alt="Isometric screenshot of the model in the Ansys Electronics Desktop viewport">
+</picture>
+-->
+
 The same thing from two orthogonal directions, with dimensions and the field
 direction marked:
 
@@ -272,7 +285,8 @@ python tools/plot_all.py               # every figure; skips studies with no dat
 
 ```
 magnetic_field_wire.py            the main example, documented inline
-studies/common.py                 shared model builder for the parameter studies
+studies/common.py                 shared model builder — all AEDT-side scripts
+studies/capture_model_image.py    exports AEDT's own isometric viewport image
 studies/study_mesh.py             sweeps adaptive passes      -> results/mesh/
 studies/study_padding.py          sweeps region padding       -> results/padding/
 tools/vizstyle.py                 shared plot style + the analytic formulas
