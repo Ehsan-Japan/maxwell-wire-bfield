@@ -1,0 +1,4 @@
+# Only needed to regenerate the README figures with tools/plot_results.py.
+# Independent of AEDT -- the script reads results/B_Field_Data.csv, nothing else.
+matplotlib>=3.8
+numpy>=1.26

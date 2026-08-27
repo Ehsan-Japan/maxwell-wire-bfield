@@ -35,8 +35,22 @@ The familiar `B = μ₀I / (2πr)` only holds while `r ≪ L`. With a 50 mm wire
 already over-predicts by ~28 % at r = 20 mm. That is physics, not a solver
 error — do not "fix" the model to chase it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/b_field_vs_radius-dark.png">
+  <img src="docs/images/b_field_vs_radius.png" alt="Solver, finite-segment analytic and infinite-wire |B| versus radius, with the solver-minus-analytic residual below">
+</picture>
+
+The solver tracks the finite-segment analytic curve to within a few percent
+across the whole sweep, drifting to about -7 % at r = 20 mm where the mesh is
+coarsest. The infinite-wire curve peels away from both.
+
 Sample output is committed at [`results/B_Field_Data.csv`](results/B_Field_Data.csv)
-(1001 points, semicolon-separated).
+(1001 points, semicolon-separated). Regenerate the figures from it with:
+
+```powershell
+python -m pip install -r requirements-plot.txt
+python tools/plot_results.py
+```
 
 ---
 
@@ -191,6 +205,15 @@ Two of these (#4, #5) are **modelling** errors, not API errors: magnetostatic
 current excitations are *external terminals*, so a conduction path needs two of
 them and both must reach the problem boundary.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/geometry-dark.png">
+  <img src="docs/images/geometry.png" alt="XZ cross-section of the model: wire, region, the two current terminals on the region boundary, and the extraction line">
+</picture>
+
+The Z padding is what makes #4 and #5 go away: with `pad_value` zero on ±Z the
+wire's end faces lie *on* the region boundary, so `I_in` and `I_out` are legal
+external terminals and the conduction path has the two it needs.
+
 ### Reading the real error
 
 `analyze_setup()` returning `False` tells you nothing. The solver message is in
@@ -222,6 +245,9 @@ Stop-Process -Name ansysedtsv
 ```
 magnetic_field_wire.py     the example, documented inline
 requirements.txt           pinned, verified versions
+requirements-plot.txt      extras for the figures only (no AEDT needed)
+tools/plot_results.py      regenerates docs/images/ from the CSV
 results/B_Field_Data.csv   sample solver output
 docs/TROUBLESHOOTING.md    full diagnosis of each failure
+docs/images/               README figures, light + dark variants
 ```
