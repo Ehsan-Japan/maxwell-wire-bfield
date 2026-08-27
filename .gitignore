@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.aedt-venv/
+
+# Ansys Electronics Desktop
+*.aedt
+*.aedt.lock
+*.aedtresults/
+*.aedb/
+*.asol
+*.lock
+*.pyaedt/
+batch.log
+PyAEDT*.log
+pyaedt*.log
+
+# OS / editors
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
