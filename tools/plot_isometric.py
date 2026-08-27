@@ -48,9 +48,11 @@ def wire(ax, t, color):
     u = np.linspace(0, 2 * np.pi, 80)
     z = np.array([-HALF_L, HALF_L])
     uu, zz = np.meshgrid(u, z)
+    # Kept translucent so the current arrow inside it stays visible --
+    # mplot3d has no real depth buffer, so an opaque surface just hides it.
     ax.plot_surface(
         WIRE_RADIUS_MM * np.cos(uu), WIRE_RADIUS_MM * np.sin(uu), zz,
-        color=color, alpha=0.85, linewidth=0, shade=False, zorder=3,
+        color=color, alpha=0.45, linewidth=0, shade=False, zorder=3,
     )
 
 
@@ -62,6 +64,9 @@ def terminals(ax, t, color):
                          WIRE_RADIUS_MM * np.sin(u),
                          np.full_like(u, z)))]
         ax.add_collection3d(Poly3DCollection(disk, facecolor=color, lw=0))
+        # A ring on top of the disk, so the terminal still reads at this scale.
+        ax.plot(WIRE_RADIUS_MM * np.cos(u), WIRE_RADIUS_MM * np.sin(u),
+                np.full_like(u, z), color=color, lw=3, zorder=6)
 
 
 def field_line(ax, t):
@@ -100,14 +105,15 @@ def figure(mode):
     ax.scatter([R_START_MM, R_END_MM], [0, 0], [0, 0], s=34, color=c_line,
                depthshade=False, zorder=5)
 
+    ax.text(WIRE_RADIUS_MM + 1, 0, 6, "5 A", color=c_term, fontsize=9,
+            ha="left", zorder=6)
+
     labels = (
         (0, 0, HALF_L + 7, "I_in — on the +Z boundary face", c_term, "center"),
         (0, 0, -HALF_L - 9, "I_out — on the −Z boundary face", c_term, "center"),
-        (-6, -8, 4, "Copper_Wire\n5 A, r = 2 mm, L = 50 mm", t["secondary"], "right"),
-        (R_END_MM + 2, 0, 4, "Extraction_Line\nr = 3 → 20 mm", c_line, "left"),
-        (0, -FIELD_R - 2, -7, "B field line", t["muted"], "center"),
-        (-X_HALF, X_HALF, HALF_L + 4, "Region (vacuum), 44 × 44 × 50 mm",
-         t["muted"], "left"),
+        (-3, -10, 17, "Copper_Wire\nr = 2 mm, L = 50 mm", t["secondary"], "right"),
+        (13, 0, 7, "Extraction_Line\nr = 3 → 20 mm", c_line, "left"),
+        (0, -FIELD_R - 1, -4, "B field line", t["muted"], "center"),
     )
     for x, y, z, text, color, ha in labels:
         ax.text(x, y, z, text, color=color, fontsize=9, ha=ha, zorder=6)
@@ -132,7 +138,11 @@ def figure(mode):
         "The model, isometric — 5 A up a 50 mm copper wire in a vacuum region",
         color=t["primary"], fontsize=12, loc="left", pad=6,
     )
-    fig.subplots_adjust(left=0.0, right=1.0, top=0.95, bottom=0.0)
+    fig.text(0.06, 0.035,
+             "Region (vacuum): 44 × 44 × 50 mm, to scale. The wire spans the "
+             "full height — its end faces are the ±Z boundary.",
+             fontsize=8, color=t["muted"])
+    fig.subplots_adjust(left=0.0, right=1.0, top=0.95, bottom=0.05)
     save(fig, "isometric", mode, t)
 
 

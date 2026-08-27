@@ -14,6 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 SCRIPTS = (
+    "plot_isometric.py",
     "plot_geometry.py",
     "plot_theory.py",
     "plot_simulation.py",

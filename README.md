@@ -30,6 +30,14 @@ in a vacuum region. |B| is sampled along a straight line in the wire's
 midplane, from r = 3 mm out to r = 20 mm.
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/isometric-dark.png">
+  <img src="docs/images/isometric.png" alt="Isometric view of the model: copper cylinder spanning the full height of the vacuum region box, current terminals on the top and bottom boundary faces, a circular B field line around the wire, and the radial extraction line">
+</picture>
+
+The same thing from two orthogonal directions, with dimensions and the field
+direction marked:
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/geometry-dark.png">
   <img src="docs/images/geometry.png" alt="Left: XZ side view of the model to scale, with the wire, vacuum region, the two current terminals on the region boundary and the extraction line. Right: XY view down the wire, showing circular B field lines around the current and the extraction line crossing them at 90 degrees.">
 </picture>
@@ -258,7 +266,8 @@ studies/common.py                 shared model builder for the parameter studies
 studies/study_mesh.py             sweeps adaptive passes      -> results/mesh/
 studies/study_padding.py          sweeps region padding       -> results/padding/
 tools/vizstyle.py                 shared plot style + the analytic formulas
-tools/plot_geometry.py            §1  the model
+tools/plot_isometric.py           §1  the model in 3D
+tools/plot_geometry.py            §1  the model, XZ and XY views
 tools/plot_theory.py              §2  analytic only
 tools/plot_simulation.py          §3  solver only
 tools/plot_theory_vs_simulation.py §4  the validation
