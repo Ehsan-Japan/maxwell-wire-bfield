@@ -26,6 +26,9 @@ WIRE_LENGTH = 50.0   # mm
 LINE_START = [3, 0, 0]
 LINE_END = [20, 0, 0]
 
+# Far enough that the boundary stops mattering -- see studies/study_padding.py.
+DEFAULT_WALL_MM = 100.0
+
 PROJECT = "Wire_B_Field_Studies"
 VERSION = "2025.2"
 
@@ -40,8 +43,20 @@ def _is_grpc_session_active(port, machine=None):
 _desktop.is_grpc_session_active = _is_grpc_session_active
 
 
-def open_design(design, non_graphical=True):
-    """One design per study case."""
+def open_design(design, non_graphical=False):
+    """
+    One design per study case.
+
+    Graphical by default, and not by preference: inserting a *new* design
+    non-graphically crashes in PyAEDT 1.4.0 --
+
+        AttributeError: 'NoneType' object has no attribute 'GetName'
+        ... desktop.py:1666 in active_design
+
+    active_design() is called straight after _insert_design() and the design is
+    not addressable yet. Attaching to a design that already exists is fine
+    non-graphically; creating one is not.
+    """
     return Maxwell3d(
         project=PROJECT,
         design=design,
@@ -52,18 +67,24 @@ def open_design(design, non_graphical=True):
     )
 
 
-def build_model(m3d, pad_xy=500):
+def build_model(m3d, wall_mm=DEFAULT_WALL_MM):
     """
     Copper wire + vacuum region + the two external current terminals.
 
-    pad_xy is the "Percentage Offset" padding applied on +/-X and +/-Y. The
-    +/-Z padding is always 0: the wire end faces have to sit on the problem
-    boundary or the current terminals are not legal external terminals.
+    wall_mm is the absolute distance from the axis to the +/-X and +/-Y region
+    faces. It is given as an absolute position, not a percentage, on purpose:
+    a percentage- or offset-padded Region is parametric and tracks the model
+    bounding box, so Extraction_Line (which reaches x = 20 mm) would drag the
+    walls out with it and every case in a sweep would get a different box than
+    the one it asked for.
+
+    The +/-Z faces always sit exactly on the wire end faces: magnetostatic
+    current terminals are external terminals and have to reach the boundary.
     """
     m3d.modeler.model_units = "mm"
 
-    for name in ("Copper_Wire", "Region"):
-        if name in m3d.modeler.object_names:
+    for name in ("Copper_Wire", "Region", "Extraction_Line"):
+        if name in m3d.modeler.object_names or name in m3d.modeler.line_names:
             m3d.modeler.delete(name)
 
     wire = m3d.modeler.create_cylinder(
@@ -75,8 +96,12 @@ def build_model(m3d, pad_xy=500):
         material="copper",
     )
     m3d.modeler.create_region(
-        pad_value=[pad_xy, pad_xy, pad_xy, pad_xy, 0, 0],
-        pad_type="Percentage Offset",
+        pad_value=[
+            wall_mm, -wall_mm,                    # +X, -X
+            wall_mm, -wall_mm,                    # +Y, -Y
+            WIRE_LENGTH / 2, -WIRE_LENGTH / 2,    # +Z, -Z: on the end faces
+        ],
+        pad_type="Absolute Position",
     )
 
     m3d.assign_current(
@@ -88,6 +113,9 @@ def build_model(m3d, pad_xy=500):
         solid=True, swap_direction=True, name="I_out",
     )
 
+    # Safe to create before solving now that the region is pinned. It has to
+    # exist before analyze_setup(): adding geometry afterwards leaves the
+    # solution stale and the field report comes back empty.
     if "Extraction_Line" not in m3d.modeler.line_names:
         m3d.modeler.create_polyline(
             points=[LINE_START, LINE_END], name="Extraction_Line",

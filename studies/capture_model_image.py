@@ -69,14 +69,19 @@ def main():
         common.build_model(m3d, pad_xy=500)
         m3d.modeler.fit_all()
 
-        for label, fn in (
-            ("viewport", lambda: viewport_png(
-                m3d, os.path.join(IMAGES, "aedt_model.png"))),
-            ("render (light)", lambda: render_png(
-                m3d, os.path.join(IMAGES, "aedt_render.png"), dark=False)),
-            ("render (dark)", lambda: render_png(
-                m3d, os.path.join(IMAGES, "aedt_render-dark.png"), dark=True)),
-        ):
+        jobs = [("viewport", lambda: viewport_png(
+            m3d, os.path.join(IMAGES, "aedt_model.png")))]
+        # The PyVista render draws the region as a translucent solid, which
+        # hides the wire ends -- the whole point of the picture. Opt in with
+        # --render if the viewport capture is unavailable.
+        if "--render" in sys.argv:
+            jobs += [
+                ("render (light)", lambda: render_png(
+                    m3d, os.path.join(IMAGES, "aedt_render.png"), dark=False)),
+                ("render (dark)", lambda: render_png(
+                    m3d, os.path.join(IMAGES, "aedt_render-dark.png"), dark=True)),
+            ]
+        for label, fn in jobs:
             try:
                 out = fn()
                 print(f"    {label} -> {os.path.relpath(out, common.REPO)}")

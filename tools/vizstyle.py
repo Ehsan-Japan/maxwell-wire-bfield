@@ -88,6 +88,20 @@ def b_inside(r_mm):
     return MU0 * CURRENT * r / (2 * np.pi * a**2) * 1e6
 
 
+def b_reference(r_mm):
+    """
+    The law this model should be judged against: the infinite wire.
+
+    Both current terminals sit ON the region boundary, so the current enters
+    and leaves the problem domain instead of stopping in free space. There are
+    no segment ends for the field to fall off around -- the solved problem is
+    an infinitely long wire, and measurement agrees: converged, the solver is
+    within ~2 % of b_infinite from r = 8 mm out, while b_finite is 22 % low at
+    r = 20 mm. b_finite is kept for contrast; it describes a different problem.
+    """
+    return b_infinite(r_mm)
+
+
 def finite_length_factor(r_mm):
     """b_finite / b_infinite = L / sqrt(L^2 + 4 r^2). Dimensionless."""
     r = np.asarray(r_mm, dtype=float) * 1e-3

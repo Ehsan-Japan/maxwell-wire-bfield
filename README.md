@@ -34,18 +34,16 @@ midplane, from r = 3 mm out to r = 20 mm.
   <img src="docs/images/isometric.png" alt="Isometric view of the model: copper cylinder spanning the full height of the vacuum region box, current terminals on the top and bottom boundary faces, a circular B field line around the wire, and the radial extraction line">
 </picture>
 
-That is a schematic, drawn from the same numbers the script uses. For the real
-thing — AEDT's own isometric viewport — run:
+That is a schematic. Here is the same model in AEDT's own viewport, captured by
+[`studies/capture_model_image.py`](studies/capture_model_image.py):
 
-```powershell
-python studies/capture_model_image.py     # needs AEDT, solves nothing
-```
+<p align="center">
+  <img src="docs/images/aedt_model.png" width="620" alt="Isometric screenshot of the model in the Ansys Electronics Desktop viewport: copper cylinder spanning the full height of the wireframe vacuum region">
+</p>
 
-<!-- figure appears here once the capture has been run:
-<picture>
-  <img src="docs/images/aedt_model.png" alt="Isometric screenshot of the model in the Ansys Electronics Desktop viewport">
-</picture>
--->
+Worth comparing the two. The screenshot proves the model is real and the
+proportions are right; the schematic labels the terminals, the boundary faces
+and the field, none of which AEDT draws for you.
 
 The same thing from two orthogonal directions, with dimensions and the field
 direction marked:
@@ -60,7 +58,7 @@ direction marked:
 | Solution type | Magnetostatic |
 | Conductor | cylinder along Z, r = 2 mm, L = 50 mm, centered at the origin |
 | Material | copper |
-| Region | vacuum, `pad_value = [500, 500, 500, 500, 0, 0]` %, `pad_type = "Percentage Offset"` |
+| Region | vacuum, walls at x, y = ±100 mm, z = ±25 mm, `pad_type = "Absolute Position"` |
 | Excitation | `I_in` 5 A on the +Z end face; `I_out` 5 A on the −Z end face, `swap_direction=True` |
 | Setup | `Setup1`, `MaximumPasses = 5` |
 | Extraction | polyline (3, 0, 0) → (20, 0, 0) mm |
@@ -72,18 +70,34 @@ pure B_φ. That is why a single scalar |B| versus r is the whole answer.
 
 Two things in there are worth understanding rather than copying:
 
-**The ±Z padding is 0.** A magnetostatic current excitation is an *external
-terminal* — the face it sits on has to be on the outer boundary of the problem,
-because that is where the current is understood to come from and go to. Pad the
-region in Z and the wire floats inside it; both terminals are then illegal and
-the solve stops.
+**The ±Z faces sit exactly on the wire's end faces.** A magnetostatic current
+excitation is an *external terminal* — the face it sits on has to be on the
+outer boundary of the problem, because that is where the current is understood
+to come from and go to. Pad the region in Z and the wire floats inside it; both
+terminals are then illegal and the solve stops.
+
+This has a consequence people miss, and §2 is built on it: with both terminals
+on the boundary the current never ends inside the domain, so **the model is an
+infinitely long wire**, not a 50 mm segment — whatever length you drew.
 
 **There are two current terminals, not one.** Current has to enter somewhere and
 leave somewhere. A conduction path with a single terminal has nowhere to send
 the 5 A, and the solver refuses it. `I_out` is the same 5 A with
 `swap_direction=True`.
 
-Both of those are modelling facts about magnetostatics, not quirks of the API.
+**The region is pinned, not padded.** `pad_type="Percentage Offset"` — the
+obvious choice, and what this repo used at first — makes the Region
+*parametric*: it tracks the model bounding box and re-evaluates whenever the
+model changes. `Extraction_Line` reaches x = 20 mm, so the moment that line
+exists the region silently grows from 44 × 44 × 50 mm to 242 × 44 × 50 mm,
+off-centre in X. First run and second run then solve different problems.
+`"Absolute Position"` fixes the walls where you put them. Verified both ways:
+with absolute position the region's bounding box is unchanged after adding the
+polyline; with percentage or absolute *offset* it is not.
+
+The first two are modelling facts about magnetostatics. The third is an AEDT
+behaviour, and it is the kind that silently changes your answer instead of
+raising an error.
 
 ---
 
@@ -113,18 +127,33 @@ B = μ₀·I / (2π·r)             falling as 1/r
 so |B| peaks exactly at the conductor surface — 500 µT here — and there is no
 field maximum anywhere else to look for.
 
-**But the wire is only 50 mm long.** The 1/r law is the infinite-wire limit. For
-a straight segment of length L, on its midplane, Biot–Savart gives
+**"But the wire is only 50 mm long"** — and this is the trap. For an *isolated*
+straight segment of length L, on its midplane, Biot–Savart gives
 
 ```
 B = μ₀·I·L / (2π·r·√(L² + 4r²))
 ```
 
-which is the infinite result multiplied by `L / √(L² + 4r²)` — the right-hand
-panel above. At r = 3 mm that factor is 99 %, so the textbook formula is fine.
-At r = 20 mm it is 78 %: the infinite formula over-predicts by 28 %. **That gap
-is physics, not solver error.** Comparing a finite model against the infinite
-formula and "fixing" the model to close the gap is the classic first mistake.
+the infinite result multiplied by `L / √(L² + 4r²)` — the right-hand panel
+above. At r = 20 mm that factor is 78 %, a 22 % difference. So which law should
+this model obey?
+
+**The infinite one.** The length of the cylinder you drew does not decide it —
+the boundary conditions do. Both current terminals sit *on* the region
+boundary, so the current enters the domain at one face and leaves at the other.
+It never stops in free space. There are no segment ends for the field to fall
+off around, and the solver is modelling a wire that goes on forever.
+
+That is not a guess; §4 measures it. Converged, the solver sits within ~2 % of
+`μ₀I/(2πr)` and 22 % away from the segment formula.
+
+> This repo argued the opposite until the numbers were checked. An early run
+> matched the finite-segment curve to within a few percent — which looked like
+> confirmation, and was actually an under-resolved mesh landing near the right
+> answer to the wrong question. The 1-pass case in §5 still does exactly that:
+> it reads 37.7 µT at r = 20 mm, close to the segment formula's 39 µT, and
+> refining the mesh walks it to 50 µT. **Agreement with a formula is not
+> evidence you picked the right formula.**
 
 ---
 
@@ -137,10 +166,10 @@ What Maxwell 3D actually returns along the extraction line:
   <img src="docs/images/simulation.png" alt="Left: solver |B| versus radius. Right: the same data log-log against a 1/r guide line">
 </picture>
 
-327 µT at r = 3 mm down to 36 µT at r = 20 mm. The log–log panel is the useful
-one: a pure 1/r field is a straight line of slope −1 there, and the solver curve
-starts at about −1.1 and steepens to −1.5. It is decaying **faster** than 1/r,
-which is exactly what section 2 predicts for a finite wire.
+335 µT at r = 3 mm down to 50 µT at r = 20 mm. The log–log panel is the useful
+one: a pure 1/r field is a straight line of slope −1 there, and the solver's
+local slope measures −1.06 near r = 3 mm and −0.95 near r = 20 mm. It is a 1/r
+field to within the mesh noise — no steepening, no finite-length roll-off.
 
 Raw data: [`results/B_Field_Data.csv`](results/B_Field_Data.csv), 1001 points,
 semicolon-separated.
@@ -154,47 +183,61 @@ semicolon-separated.
   <img src="docs/images/theory_vs_simulation.png" alt="Solver, finite-segment theory and infinite-wire theory versus radius, with the solver-minus-theory residual below">
 </picture>
 
-| r | Solver | Theory (finite segment) | Infinite-wire formula |
-|---|--------|-------------------------|-----------------------|
-| 3 mm | 327 µT | 332 µT | 333 µT |
-| 20 mm | 36 µT | 39 µT | 50 µT ❌ |
+| r | Solver | Infinite wire ✅ | Isolated 50 mm segment |
+|---|--------|------------------|------------------------|
+| 3 mm | 335 µT | 333 µT | 331 µT |
+| 20 mm | 49.8 µT | 50.0 µT | 39 µT ❌ |
+
+At r = 3 mm the two laws are 0.7 % apart and the measurement cannot tell them
+apart. At r = 20 mm they are 22 % apart and it can: the solver lands on the
+infinite-wire value to better than half a percent.
 
 Always plot the residual, not just the overlay — two curves on a log axis look
-like they agree long after they stop agreeing. Here the solver sits within a few
-percent of the finite-segment theory across the sweep and drifts to about −7 %
-at the far end.
+like they agree long after they stop agreeing. The residual here stays inside
+±3 % from r = 8 mm out, and its wobble is mesh noise: it moves when you refine
+the mesh (§5) and it does not move when you change the physics.
 
-That drift is the interesting part, and it is *not* physics. Sections 5 and 6
-separate the two numerical causes.
+Getting to this figure took fixing two real bugs, both in §5 and §6's territory:
+a region so tight the boundary was inflating the far field, and a mesh coarse
+enough to fake agreement with the wrong law.
 
 ---
 
 ## 5. Effect of mesh refinement
 
-> Run [`studies/study_mesh.py`](studies/study_mesh.py) in AEDT to produce this
-> figure — it needs the solver, so it is not committed.
-
 FEA solves the field on a mesh of tetrahedra. Where the mesh is coarse relative
 to how fast the field is changing, the answer is wrong — and at large r the
-elements are big and |B| is small, which is why the residual in section 4 grows
-outward.
+elements are big and |B| is small, so that is where it shows first.
 
 The study solves the identical geometry and excitation with 1, 2, 3, 5 and 8
 adaptive passes. Nothing physical changes between the cases; only the
 discretisation does. So any movement in the answer is numerical error, and when
 the answer *stops* moving you are mesh-converged.
 
+Data committed at [`results/mesh/`](results/mesh/). Reproduce with:
+
 ```powershell
-python studies/study_mesh.py        # ~5 solves, one design each
-python tools/plot_mesh_study.py     # -> docs/images/mesh_study.png
+python studies/study_mesh.py        # 5 solves, one design each
+python tools/plot_mesh_study.py
 ```
 
-<!-- figure appears here once the study has been run:
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/mesh_study-dark.png">
   <img src="docs/images/mesh_study.png" alt="|B| curves at increasing adaptive-pass counts, and the error at r = 20 mm flattening as the mesh refines">
 </picture>
--->
+
+| passes | tetrahedra | \|B\| at r = 20 mm | error |
+|---|---|---|---|
+| 1 | 2 948 | 37.7 µT | −24.6 % |
+| 2 | 3 838 | 48.8 µT | −2.3 % |
+| 3 | 4 996 | 50.2 µT | +0.4 % |
+| 5 | 8 460 | 50.0 µT | −0.0 % |
+| 8 | 18 611 | 50.4 µT | +0.7 % |
+
+Converged by 3 passes, and 8 passes buys nothing but 18 000 elements. Note the
+1-pass row: 37.7 µT is within 3 % of the isolated-segment formula's 39 µT. Stop
+there and you would "confirm" the wrong physics — which is exactly what happened
+in an earlier version of this repo.
 
 Note that adaptive refinement is driven by the solver's own error estimate, so
 `MaximumPasses` alone doesn't guarantee a finer mesh — AEDT stops early once it
@@ -205,17 +248,14 @@ thinks it has converged. The study pins `MinimumPasses` and tightens
 
 ## 6. Effect of the region padding
 
-> Run [`studies/study_padding.py`](studies/study_padding.py) in AEDT to produce
-> this figure.
-
 You cannot mesh infinity. The region is where free space gets truncated, and its
 outer face carries a boundary condition. Put that face close and you are no
 longer solving "a wire in free space" — you are solving "a wire in a box", and
 the field nearest the wall is the most wrong.
 
-The study sweeps the ±X/±Y padding over 500, 750, 1000, 2000 and 4000 %, putting
-the wall at 22, 32, 42, 82 and 162 mm from the axis, with the mesh settings held
-fixed. Those five regions, to scale — no solver needed to draw them:
+The study puts the wall at 22, 32, 42, 82 and 162 mm from the axis, with the
+mesh settings held fixed. Those five regions, to scale — no solver needed to
+draw them:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/region_sizes-dark.png">
@@ -224,21 +264,36 @@ fixed. Those five regions, to scale — no solver needed to draw them:
 
 Note what does *not* change: the ±Z faces. Only the side walls move, because the
 terminals have to stay on the top and bottom boundary. And note the price — the
-4000 % region is 54× the volume of the 500 % one, and all of it gets meshed and
-solved. When the answer stops depending on where the wall is, the region is big
-enough; anything past that is compute you spent for nothing.
+162 mm region is 54× the volume of the 22 mm one, and all of it gets meshed and
+solved.
+
+Data committed at [`results/padding/`](results/padding/). Reproduce with:
 
 ```powershell
-python studies/study_padding.py        # ~5 solves, one design each
-python tools/plot_padding_study.py     # -> docs/images/padding_study.png
+python studies/study_padding.py        # 5 solves, one design each
+python tools/plot_padding_study.py
 ```
 
-<!-- figure appears here once the study has been run:
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/padding_study-dark.png">
   <img src="docs/images/padding_study.png" alt="|B| curves at increasing region sizes, and the error at r = 20 mm flattening as the boundary moves away">
 </picture>
--->
+
+| wall at | \|B\| at r = 20 mm | error |
+|---|---|---|
+| 22 mm | 60.4 µT | +20.8 % |
+| 32 mm | 52.2 µT | +4.4 % |
+| 42 mm | 50.2 µT | +0.3 % |
+| 82 mm | 49.9 µT | −0.2 % |
+| 162 mm | 51.2 µT | +2.2 % |
+
+A wall 2 mm past the last sample point inflates the field by 21 % — the boundary
+squeezes the flux and |B| goes **up**. It is settled by 42 mm, about twice the
+outermost radius sampled. The 162 mm case creeping back to +2 % is not the
+boundary returning; it is the mesh, spread over 50× the volume at the same pass
+count. Push the domain out far enough and you start paying for it in resolution.
+
+The main model uses 100 mm.
 
 Nothing below 500 % is usable here, and that is its own lesson: the region wall
 would land at 18 mm while the extraction line runs out to 20 mm. Sampling a
@@ -299,7 +354,9 @@ tools/plot_mesh_study.py          §5  mesh convergence
 tools/plot_region_sizes.py        §6  the five region sizes, to scale
 tools/plot_padding_study.py       §6  boundary convergence
 tools/plot_all.py                 all of the above
-results/B_Field_Data.csv          sample solver output (committed)
+results/B_Field_Data.csv          main solver output (committed)
+results/mesh/                     mesh study output, 5 cases + metadata
+results/padding/                  region study output, 5 cases + metadata
 docs/images/                      figures, light + dark variants
 docs/TROUBLESHOOTING.md           every failure hit while building this, and its fix
 ```

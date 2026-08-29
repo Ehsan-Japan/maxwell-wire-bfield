@@ -5,9 +5,9 @@ Figure 6a -- the five region sizes the padding study sweeps, drawn to scale.
         ->  docs/images/region_sizes{,-dark}.png
 
 Needs no solver output: this is geometry, and it is worth seeing before the
-error curve. "500 % padding" and "4000 % padding" are abstractions until you
-notice the second one is a box roughly fifty times the volume of the first --
-which is what you pay, in mesh, for the last percent of accuracy.
+error curve. "wall at 22 mm" and "wall at 162 mm" are abstractions until you
+notice the second is a box fifty times the volume of the first -- which is what
+you pay, in mesh, for the last percent of accuracy.
 
 Only the side walls move. The +/-Z faces stay put in every case, because the
 current terminals have to stay on them.
@@ -19,10 +19,9 @@ from vizstyle import (
 )
 
 HALF_L = 25.0
-# The paddings in studies/study_padding.py, and the wall they put in place.
-CASES = [(pad, WIRE_RADIUS_MM + pad / 100.0 * 2 * WIRE_RADIUS_MM)
-         for pad in (500, 750, 1000, 2000, 4000)]
-BIGGEST = CASES[-1][1]
+# The wall distances swept in studies/study_padding.py, in mm from the axis.
+WALLS = (22, 32, 42, 82, 162)
+BIGGEST = float(WALLS[-1])
 
 
 def footprint(ax, t):
@@ -30,14 +29,14 @@ def footprint(ax, t):
     ramp = t["ramp"]
     c_line = t["series"][2]
 
-    for (pad, half), color in zip(CASES, ramp[:len(CASES)]):
+    for half, color in zip(WALLS, ramp[:len(WALLS)]):
         ax.add_patch(plt.Rectangle(
             (-half, -half), 2 * half, 2 * half, facecolor="none",
             edgecolor=color, lw=1.6, zorder=2,
         ))
         # Labelled at the top-left corner: nested squares put those corners on
         # a diagonal, so five labels that would collide on one edge don't.
-        ax.annotate(f"{pad} %", xy=(-half, half), xytext=(-3, 3),
+        ax.annotate(f"{half} mm", xy=(-half, half), xytext=(-3, 3),
                     textcoords="offset points", ha="right", va="bottom",
                     fontsize=9, color=color, zorder=3)
 
@@ -63,12 +62,12 @@ def profile(ax, t):
 
     # The boxes are 50 mm tall and up to 324 mm wide, so labels stacked above
     # them on leaders are the only ones that stay legible.
-    for i, ((pad, half), color) in enumerate(zip(CASES, ramp[:len(CASES)])):
+    for i, (half, color) in enumerate(zip(WALLS, ramp[:len(WALLS)])):
         ax.add_patch(plt.Rectangle(
             (-half, -HALF_L), 2 * half, 2 * HALF_L, facecolor="none",
             edgecolor=color, lw=1.6, zorder=2,
         ))
-        ax.annotate(f"wall at {half:.0f} mm", xy=(half, HALF_L),
+        ax.annotate(f"wall at {half} mm", xy=(half, HALF_L),
                     xytext=(half, HALF_L + 22 + i * 24), textcoords="data",
                     ha="center", va="bottom", fontsize=9, color=color, zorder=3,
                     arrowprops=dict(arrowstyle="-", color=color, lw=0.8))
@@ -106,11 +105,11 @@ def figure(mode):
         for side in ("left", "bottom"):
             a.spines[side].set_visible(False)
 
-    volumes = [(2 * half) ** 2 * (2 * HALF_L) for _, half in CASES]
+    volumes = [(2 * half) ** 2 * (2 * HALF_L) for half in WALLS]
     fig.text(
         0.03, 0.03,
-        f"The 4000 % region holds {volumes[-1] / volumes[0]:.0f}× the volume of "
-        "the 500 % one — and every bit of it has to be meshed and solved.",
+        f"The 162 mm region holds {volumes[-1] / volumes[0]:.0f}× the volume of the "
+        "22 mm one — and every bit of it has to be meshed and solved.",
         fontsize=8, color=t["muted"],
     )
     fig.subplots_adjust(left=0.02, right=0.98, top=0.9, bottom=0.08, wspace=0.06)

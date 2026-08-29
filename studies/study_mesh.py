@@ -29,7 +29,7 @@ def main():
         print(f"[mesh] {passes} adaptive pass(es)")
         m3d = common.open_design(f"mesh_p{passes:02d}")
         try:
-            common.build_model(m3d, pad_xy=500)
+            common.build_model(m3d, wall_mm=common.DEFAULT_WALL_MM)
             common.make_setup(m3d, passes=passes)
             common.solve(m3d)
 
@@ -37,7 +37,7 @@ def main():
             common.export_b_line(m3d, csv_path)
             elements = common.mesh_element_count(m3d)
             common.write_meta(csv_path, passes=passes, elements=elements,
-                              pad_xy=500)
+                              wall_mm=common.DEFAULT_WALL_MM)
             where = os.path.relpath(csv_path, common.REPO)
             print(f"    -> {where}"
                   + (f"  ({elements} elements)" if elements else ""))

@@ -6,8 +6,10 @@ Figure 2 -- the theory, on its own. No solver data involved.
 Left  : |B|(r) from the axis outward. Inside the conductor Ampere's law encloses
         only (r/a)^2 of the current, so |B| grows linearly; outside it falls as
         1/r. The maximum is exactly at the conductor surface.
-Right : how much the finite length costs you. B_finite / B_infinite =
-        L / sqrt(L^2 + 4 r^2) -- the only reason the textbook formula fails here.
+Right : the finite-length correction, and when it applies. It does NOT apply to
+        this model -- the terminals sit on the boundary, so the current never
+        ends and the wire is effectively infinite. Drawn to show the size of the
+        difference between the two problems.
 """
 import matplotlib.pyplot as plt
 import numpy as np
@@ -82,12 +84,18 @@ def figure(mode):
         "sampled window", xy=((R_START_MM + R_END_MM) / 2, 74), ha="center",
         fontsize=9, color=t["secondary"],
     )
+    ax2.annotate(
+        "This model sits on the 100 % line:\nboth terminals are on the boundary,\n"
+        "so the current never ends.",
+        xy=(1.0, 87.0), ha="left", va="center", fontsize=9,
+        color=t["series"][0],
+    )
 
     ax2.set_xlim(0, R_END_MM + 2)
     ax2.set_ylim(70, 106)
     ax2.set_xlabel("r  [mm]")
     ax2.set_ylabel("B_finite / B_infinite  [%]")
-    title(ax2, "What the finite 50 mm length costs", t)
+    title(ax2, "The finite-segment correction — a different problem", t)
 
     style(fig, (ax, ax2), t)
     caption(

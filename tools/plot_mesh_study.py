@@ -13,7 +13,7 @@ import numpy as np
 
 from vizstyle import (
     MODES, THEMES, R_START_MM, R_END_MM,
-    at_radius, b_finite, caption, legend, linear_ticks, load_sweep,
+    at_radius, b_reference, caption, legend, linear_ticks, load_sweep,
     missing, save, style, title,
 )
 
@@ -29,14 +29,17 @@ def figure(mode):
 
     # ---------------- left: the curves ----------------
     r_ref = np.linspace(R_START_MM, R_END_MM, 200)
-    ax.plot(r_ref, b_finite(r_ref), lw=2, color=c_theory, ls=(0, (5, 3)),
-            label="analytic (finite segment)", zorder=1)
 
     for i, case in enumerate(STUDY):
         color = ramp[min(i, len(ramp) - 1)]
         ax.plot(case["r"], case["b"], lw=2, color=color,
                 label=f"{int(case['value'])} pass"
                       f"{'es' if case['value'] != 1 else ''}", zorder=2 + i)
+
+    # Drawn last: once the sweep converges the curves land on top of it,
+    # and a reference line hidden under the data is not a reference line.
+    ax.plot(r_ref, b_reference(r_ref), lw=2, color=c_theory,
+            ls=(0, (5, 3)), label="analytic: infinite wire", zorder=20)
 
     ax.set_yscale("log")
     ax.set_yticks([30, 50, 100, 200, 300])
@@ -51,7 +54,7 @@ def figure(mode):
     for case in STUDY:
         elements = case["meta"].get("elements")
         x.append(elements if elements else case["value"])
-        analytic = float(b_finite(R_END_MM))
+        analytic = float(b_reference(R_END_MM))
         y.append(100 * (at_radius(case["r"], case["b"], R_END_MM) - analytic)
                  / analytic)
         labels.append(int(case["value"]))
@@ -72,6 +75,7 @@ def figure(mode):
         ax2.set_xlabel("tetrahedra in the final mesh  (log)")
     else:
         ax2.set_xlabel("adaptive passes")
+    ax2.margins(y=0.28)   # headroom for the point labels
     ax2.set_ylabel("error at r = 20 mm  [%]")
     title(ax2, "Refine until the answer stops moving", t)
 
